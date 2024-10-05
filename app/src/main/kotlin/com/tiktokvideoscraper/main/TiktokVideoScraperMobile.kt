@@ -80,10 +80,9 @@ class TikTokVideoScraperMobile {
         if (!response.isSuccessful) throw IOException("Error downloading ids.json")
 
         val idsJson = parseJson(response.body?.string() ?: throw IOException("Response body is null"))
-        val idsJsonArray = idsJson.element.asJsonArray
         val iidDidList = mutableListOf<Map<String, String>>()
 
-        for (i in 0 until idsJsonArray.size()) {
+        for (i in 0 until idsJson.size) {
             val iid = idsJson[i]["iid"].asString()
             val deviceId = idsJson[i]["device_id"].asString()
             iidDidList.add(mapOf("iid" to iid, "device_id" to deviceId))
