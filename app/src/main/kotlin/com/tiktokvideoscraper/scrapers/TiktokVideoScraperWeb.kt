@@ -1,4 +1,4 @@
-package com.tiktokvideoscraper.main
+package com.tiktokvideoscraper.scrapers
 
 import okhttp3.*
 import okhttp3.JavaNetCookieJar
