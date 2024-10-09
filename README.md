@@ -1,5 +1,5 @@
 # TiktokVideoScraper
-A Kotlin class to download videos from TikTok
+A Kotlin class to download videos & photos from TikTok
 
 <h2>dependencies</h2>
 <code>JDK 8+</code>
