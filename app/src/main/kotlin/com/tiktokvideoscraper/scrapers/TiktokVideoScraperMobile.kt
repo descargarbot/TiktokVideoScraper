@@ -1,4 +1,4 @@
-package com.tiktokvideoscraper.main
+package com.tiktokvideoscraper.scrapers
 
 import okhttp3.*
 import okhttp3.JavaNetCookieJar
@@ -13,13 +13,13 @@ import java.net.Proxy
 import java.util.regex.Pattern
 import kotlin.random.Random
 
-class TikTokVideoScraperMobile {
+class TikTokVideoScraperMobile{
     private var client: OkHttpClient
     private val headers: Headers
-    private val tiktokRegex = """https?://www\.tiktok\.com/(?:embed|@([\w\.-]+)?/video)/(\d+)""".toRegex()
+    private val tiktokRegex = """https?://www\.tiktok\.com/(?:embed|@([\w\.-]+)?/(photo|video))/(\d+)""".toRegex()
 
-    init {
-        val cookieManager = CookieManager().apply {
+    init{
+        val cookieManager = CookieManager().apply{
             setCookiePolicy(CookiePolicy.ACCEPT_ALL)
         }
         val cookieJar = JavaNetCookieJar(cookieManager)
@@ -35,8 +35,8 @@ class TikTokVideoScraperMobile {
             .build()
     }
 
-    fun setProxy(protocol: String, ip: String, port: Int) {
-        val proxyType = when (protocol.lowercase()) {
+    fun setProxy(protocol: String, ip: String, port: Int){
+        val proxyType = when (protocol.lowercase()){
             "http", "https" -> Proxy.Type.HTTP
             "socks4", "socks5" -> Proxy.Type.SOCKS
             else -> throw IllegalArgumentException("Unsupported proxy protocol: $protocol")
@@ -68,10 +68,11 @@ class TikTokVideoScraperMobile {
 
         val matchResult = tiktokRegex.find(finalUrl)
             ?: throw IllegalArgumentException("Invalid TikTok URL")
-        return matchResult.groupValues[2]
+
+        return matchResult.groupValues[3]
     }
 
-    fun getVideoDataByVideoId(videoId: String): Pair<String, String> {
+    fun getVideoDataByVideoId(VideoId: String): Pair<MutableList<String>, String> {
 
         val iidDidUrl = "https://cdn.jsdelivr.net/gh/descargarbot/tiktok-video-scraper-mobile@main/ids.json"
         val request = Request.Builder().url(iidDidUrl).build()
@@ -98,14 +99,14 @@ class TikTokVideoScraperMobile {
             "device_platform" to "android",
             "device_type" to "Pixel 8 Pro",
             "os_version" to "14",
-            "aweme_ids" to "[${videoId}]"
+            "aweme_ids" to "[${VideoId}]"
         )
 
         var running = true
         var tryCount = 1
 
-        while (running) {
-            if (iidDidList.isNotEmpty()) {
+        while (running){
+            if (iidDidList.isNotEmpty()){
                 val tryIidDid = iidDidList.random()
                 params["iid"] = tryIidDid["iid"]!!
                 params["device_id"] = tryIidDid["device_id"]!!
@@ -122,22 +123,48 @@ class TikTokVideoScraperMobile {
                     .post(formBody)
                     .build()
 
-                try {
+                val tiktokVideoUrls = mutableListOf<String>()
+                
+                try{
                     val videoResponse = client.newCall(requestBuilder).execute()
                     val jsonVideoData = parseJson(videoResponse.body?.string() ?: throw IOException("Response body is null"))
 
-                    val videoUrl = jsonVideoData["aweme_details"][0]["video"]["bit_rate"][0]["play_addr"]["url_list"][0].asString()
-                    val thumbnail = jsonVideoData["aweme_details"][0]["video"]["dynamic_cover"]["url_list"][0].asString()
+                    val awemeDetails = jsonVideoData["aweme_details"][0]
 
-                    return Pair(videoUrl, thumbnail)
-                } catch (e: Exception) {
-                    if (tryCount > 4) {
-                        println("fail: ${params["iid"]}, ${params["device_id"]}")
-                        iidDidList.remove(tryIidDid)
-                        tryCount = 1
-                    } else {
-                        println("Error, retry: $tryCount")
-                        tryCount += 1
+                    val musicUrl = awemeDetails["added_sound_music_info"]["play_url"]["url_list"][0].asString()
+                    tiktokVideoUrls.add(musicUrl)
+
+                    val imagePostInfo = awemeDetails["image_post_info"]
+                    val imagePostCover = imagePostInfo["image_post_cover"]["display_image"]["url_list"][0].asString()
+
+                    for (image in imagePostInfo["images"]){
+                        val imageUrl = image["display_image"]["url_list"][0].asString()
+                        tiktokVideoUrls.add(imageUrl)
+                    }
+
+                    return Pair(tiktokVideoUrls, imagePostCover)
+                    
+                }catch (e: Exception){
+                    try{
+                        val videoResponse = client.newCall(requestBuilder).execute()
+                        val jsonVideoData = parseJson(videoResponse.body?.string() ?: throw IOException("Response body is null"))
+
+                        val videoUrl = jsonVideoData["aweme_details"][0]["video"]["bit_rate"][0]["play_addr"]["url_list"][0].asString()
+                        val thumbnail = jsonVideoData["aweme_details"][0]["video"]["dynamic_cover"]["url_list"][0].asString()
+
+                        tiktokVideoUrls.add(videoUrl)
+
+                        return Pair(tiktokVideoUrls, thumbnail)
+
+                    }catch (e: Exception){
+                        if (tryCount > 4){
+                            println("fail: ${params["iid"]}, ${params["device_id"]}")
+                            iidDidList.remove(tryIidDid)
+                            tryCount = 1
+                        }else{
+                            println("Error, retry: $tryCount")
+                            tryCount += 1
+                        }
                     }
                 }
             } else {
@@ -148,56 +175,59 @@ class TikTokVideoScraperMobile {
     }
 
 
-    fun download(tiktokVideoUrl: String, videoId: String): List<String> {
-        val request = Request.Builder()
-            .url(tiktokVideoUrl)
-            .headers(headers)
-            .build()
+    fun download(tiktokVideoUrls: List<String>, VideoId: String): List<String> {
+        val pathFilenames = mutableListOf<String>()
 
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Unexpected code $response")
+        var count = 0
+        for ( itemUrl in tiktokVideoUrls ){
+            val request = Request.Builder()
+                .url(itemUrl)
+                .headers(headers)
+                .build()
 
-            val pathFilename = "$videoId.mp4"
-            val file = File(pathFilename)
-            file.outputStream().use { fileOutputStream ->
-                response.body?.byteStream()?.copyTo(fileOutputStream)
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IOException("Unexpected code $response")
+
+                var Filename = ""
+                if (tiktokVideoUrls.size == 1){
+                    Filename = "${VideoId}.mp4"
+                }else{
+                    if (".webp" in itemUrl){
+                        Filename = "${VideoId}___$count.webp"
+                    }else{
+                        Filename = "${VideoId}___$count.mp4"
+                    }
+                }
+
+                val file = File(Filename)
+                file.outputStream().use { fileOutputStream ->
+                    response.body?.byteStream()?.copyTo(fileOutputStream)
+                }
+                
+                pathFilenames.add(Filename)
             }
-
-            return listOf(pathFilename)
+            count++
         }
+        return pathFilenames
     }
 
-    fun getVideoFilesize(videoUrl: String): String {
-        val request = Request.Builder()
-            .url(videoUrl)
-            .headers(headers)
-            .head()
-            .build()
+    fun getVideoFilesize(tiktokVideoUrls: List<String>): List<String> {
+        val itemsFilesize = mutableListOf<String>()
 
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Unexpected code $response")
+        for ( itemUrl in tiktokVideoUrls ){
+            val request = Request.Builder()
+                .url(itemUrl)
+                .headers(headers)
+                .head()
+                .build()
 
-            return response.header("content-length") ?: throw IOException("Content-Length not found")
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IOException("Unexpected code $response")
+
+                itemsFilesize.add(response.header("content-length") ?: throw IOException("Content-Length not found"))
+            }
         }
+
+        return itemsFilesize
     }
-}
-
-fun main() {
-    // set ur tt video url
-    val tiktokUrl = ""
-
-    val tiktokVideo = TikTokVideoScraperMobile()
-
-    // Set proxy if needed
-    // tiktokVideo.setProxy("socks5", "157.230.250.185", 2144)
-
-    val videoId = tiktokVideo.getVideoIdByUrl(tiktokUrl)
-    
-    val (tiktokVideoUrl, videoThumbnail) = tiktokVideo.getVideoDataByVideoId(videoId)
-
-    val videoSize = tiktokVideo.getVideoFilesize(tiktokVideoUrl)
-    println("filesize: ~$videoSize bytes")
-
-    val downloadedVideoList = tiktokVideo.download(tiktokVideoUrl, videoId)
-    println("Downloaded files: $downloadedVideoList")
 }
