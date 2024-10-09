@@ -44,7 +44,7 @@ java {
 
 application {
     // Define the main class for the application.
-    mainClass = "com.tiktokvideoscraper.main.TiktokVideoScraperKt"
+    mainClass = "com.tiktokvideoscraper.main.MainKt"
 }
 
 tasks.named<Test>("test") {
