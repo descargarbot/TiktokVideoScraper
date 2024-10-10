@@ -12,7 +12,7 @@ A Kotlin class to download videos & photos from TikTok
 <br>
 
 <h2>run it</h2>
-set your tt video url in TikTokVideoScraper.kt, then make sure that gradlew have exec permissions
+set your tt video url in Main.kt, then make sure that gradlew have exec permissions
 <br><br>
 <url>
   <li> Linux & macOS </li><br>
